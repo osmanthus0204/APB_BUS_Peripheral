@@ -34,7 +34,7 @@
 
 ### Switches
 - GPIB[0] ~ GPIB[7] : Switch[0] ~ Switch[7]
-- GPIOD[0] ~ GPIOD[7] : Switch[8] ~ Switch[15]
+- GPIOD[0] ~ GPIOD[3] : Switch[8] ~ Switch[11]
 
 ### LEDs
 - GPOA[0] ~ GPOA[7] : LED[0] ~ LED[7]
