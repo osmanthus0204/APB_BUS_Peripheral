@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-  
+
 module GPIO_Periph (
     // global signal
     input  logic        PCLK,

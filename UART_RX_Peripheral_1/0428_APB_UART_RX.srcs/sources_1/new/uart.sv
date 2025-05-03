@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-
+  
 module Uart_RX_Periph (
     // global signal
     input  logic        PCLK,

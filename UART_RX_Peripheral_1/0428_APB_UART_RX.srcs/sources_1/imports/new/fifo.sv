@@ -14,7 +14,7 @@ module fifo (
 );
     logic [1:0] wr_ptr, rd_ptr;
 
-    fifo_ram U_RAM (
+    ram U_RAM (
         .clk  (clk),
         .wAddr(wr_ptr),
         .wdata(wdata),
@@ -28,7 +28,7 @@ module fifo (
 
 endmodule
 
-module fifo_ram (
+module ram (
     input  logic       clk,
     input  logic [1:0] wAddr,
     input  logic [7:0] wdata,

@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-    
+
 module MCU (
     input  logic       clk,
     input  logic       reset,
@@ -9,8 +9,8 @@ module MCU (
     inout  logic [7:0] GPIOD,
     output logic [3:0] fndCom,
     output logic [7:0] fndFont,
-    output logic       RX
-); 
+    input  logic       RX
+);
     // global signals
     logic        PCLK;
     logic        PRESET;
@@ -25,6 +25,7 @@ module MCU (
     logic        PSEL_GPIOC;
     logic        PSEL_GPIOD;
     logic        PSEL_FND;
+    logic        PSEL_TIM;
     logic        PSEL_UART_RX;
     logic [31:0] PRDATA_RAM;
     logic [31:0] PRDATA_GPO;
@@ -32,6 +33,7 @@ module MCU (
     logic [31:0] PRDATA_GPIOC;
     logic [31:0] PRDATA_GPIOD;
     logic [31:0] PRDATA_FND;
+    logic [31:0] PRDATA_TIM;
     logic [31:0] PRDATA_UART_RX;
     logic        PREADY_RAM;
     logic        PREADY_GPO;
@@ -39,6 +41,7 @@ module MCU (
     logic        PREADY_GPIOC;
     logic        PREADY_GPIOD;
     logic        PREADY_FND;
+    logic        PREADY_TIM;
     logic        PREADY_UART_RX;
 
     // CPU - APB_Master Signals
@@ -80,28 +83,36 @@ module MCU (
         .PSEL3  (PSEL_GPIOC),
         .PSEL4  (PSEL_GPIOD),
         .PSEL5  (PSEL_FND),
-        .PSEL6  (PSEL_UART_RX),
+        .PSEL6  (PSEL_TIM),
+        .PSEL7  (PSEL_UART_RX),
         .PRDATA0(PRDATA_RAM),
         .PRDATA1(PRDATA_GPO),
         .PRDATA2(PRDATA_GPI),
         .PRDATA3(PRDATA_GPIOC),
         .PRDATA4(PRDATA_GPIOD),
         .PRDATA5(PRDATA_FND),
-        .PRDATA6(PRDATA_UART_RX),
+        .PRDATA6(PRDATA_TIM),
+        .PRDATA7(PRDATA_UART_RX),
         .PREADY0(PREADY_RAM),
         .PREADY1(PREADY_GPO),
         .PREADY2(PREADY_GPI),
         .PREADY3(PREADY_GPIOC),
         .PREADY4(PREADY_GPIOD),
         .PREADY5(PREADY_FND),
-        .PREADY6(PREADY_UART_RX)
+        .PREADY6(PREADY_TIM),
+        .PREADY7(PREADY_UART_RX)
     );
 
     ram U_RAM (
-        .*,
-        .PSEL  (PSEL_RAM),
-        .PRDATA(PRDATA_RAM),
-        .PREADY(PREADY_RAM)
+        .PCLK   (PCLK),
+        .PRESET (PRESET),
+        .PADDR  (PADDR),
+        .PWDATA (PWDATA),
+        .PWRITE (PWRITE),
+        .PENABLE(PENABLE),
+        .PSEL   (PSEL_RAM),
+        .PRDATA (PRDATA_RAM),
+        .PREADY (PREADY_RAM)
     );
 
     GPO_Periph U_GPOA (
@@ -149,11 +160,17 @@ module MCU (
         .fndFont(fndFont)
     );
 
+    Timer_Periph U_TIM0 (
+        .*,
+        .PSEL  (PSEL_TIM),
+        .PRDATA(PRDATA_TIM),
+        .PREADY(PREADY_TIM)
+    );
+
     Uart_RX_Periph U_UART_RX (
         .*,
         .PSEL  (PSEL_UART_RX),
         .PRDATA(PRDATA_UART_RX),
         .PREADY(PREADY_UART_RX)
     );
-
 endmodule
