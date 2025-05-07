@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+//GPIOC <-> GPIOD 기존 코드와 다를 수 있으므로 vivado constraint file 꼭 확인하자!
 #define __IO volatile
 
 typedef struct {
@@ -96,9 +97,9 @@ typedef struct {
 #define MODE_SEL_PIN      1   // GPIOC[1] - 0: 온도 / 1: 습도
 #define START_BTN_PIN     4   // GPIOC[4] - Start 버튼
 
-// Setting Value
+// Setting Value (가변적)
 #define THRESHOLD_mm 150  // 차량 감지 임계값 (mm)
-#define MIN_STABLE_COUNT 2 // 
+#define MIN_STABLE_COUNT 3 // 
 
 // -------------delay------------
 void delay(int n);
