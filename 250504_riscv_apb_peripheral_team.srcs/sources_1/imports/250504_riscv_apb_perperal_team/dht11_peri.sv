@@ -25,26 +25,12 @@ module dht11_peri (
     // GPI
     logic [ 1:0] dcr;  // dcr[1] = modesel, dcr[0] = enable 
     //GPO
-    logic [ 4:0] dlr;
     logic [15:0] ddr;
 
-    logic        wr_en;
     logic        dht_done;
     logic [15:0] mode_data;
     logic [ 7:0] int_data;
     logic [ 7:0] frac_data;
-
-    logic [ 3:0] w_digit_1000;
-    logic [ 3:0] w_digit_100;
-    logic [ 3:0] w_digit_10;
-    logic [ 3:0] w_digit_1;
-
-    assign dlr = {checksum_led, mode_state_led};
-
-    assign w_digit_1000 = ddr/1000%10;
-    assign w_digit_100 = ddr/100%10;
-    assign w_digit_10 = ddr/10%10;
-    assign w_digit_1 = ddr%10;
 
     tick_1us #(
         .TICK_COUNT(100),
@@ -58,7 +44,7 @@ module dht11_peri (
     dht11_cu U_dht11_cu (
         .clk(PCLK),
         .reset(PRESET),
-        .start(dcr[0]),
+        .start(dcr[0]), //start_pulse
         .tick_1us(w_tick_1us),
         .data_out(w_data_out),
         .led(mode_state_led),
@@ -72,14 +58,13 @@ module dht11_peri (
     );
 
     always @(*) begin
-        if (dcr[1]) begin
-            mode_data = w_data_out[39:24];  //39:24
-        end else begin
-            mode_data = w_data_out[23:8];  //23:8
-        end
+        if (dcr[1])
+            mode_data = w_data_out[39:24];
+        else
+            mode_data = w_data_out[23:8];
         int_data = mode_data[15:8];
         frac_data = mode_data[7:0];
-        ddr = (int_data * 100) + frac_data; 
+        ddr = (int_data * 100) + frac_data;
     end
 
     APB_SlaveIntf_DHT11 U_APB_SlaveIntf_DHT11 (
@@ -93,23 +78,15 @@ module dht11_peri (
         .PRDATA  (PRDATA),
         .PREADY  (PREADY),
         .dht_done(dht_done),
-        .wr_en   (wr_en),
-        .dcr     (dcr),       //{modesel, start}
-        .dlr     (dlr),
-        .ddr     (ddr),       // sensor data(temp or hum)
-        .digit_1000(w_digit_1000),
-        .digit_100(w_digit_100),
-        .digit_10(w_digit_10),
-        .digit_1(w_digit_1)
+        .dcr     (dcr),
+        .ddr     (ddr)
     );
 
 endmodule
 
 module APB_SlaveIntf_DHT11 (
-    // global signal
     input  logic        PCLK,
     input  logic        PRESET,
-    // APB Interface Signals
     input  logic [ 4:0] PADDR,
     input  logic [31:0] PWDATA,
     input  logic        PWRITE,
@@ -119,94 +96,91 @@ module APB_SlaveIntf_DHT11 (
     output logic        PREADY,
 
     input  logic        dht_done,
-    input  logic        wr_en,     // uart wr_en
-    // export signals
-    output logic [ 1:0] dcr,       //{empty_rx_b, uart_trig[7:0], modesel, start}
-    input  logic [ 4:0] dlr,       // led input
-    input  logic [15:0] ddr,       // sensor data(temp or hum)
-    input logic [7:0] digit_1000, digit_100, digit_10, digit_1
+    output logic [ 1:0] dcr,
+    input  logic [15:0] ddr
 );
-    logic [31:0] slv_reg0, slv_reg1, slv_reg2, slv_reg3, slv_reg4, slv_reg5, slv_reg6, slv_reg7;
 
-    assign dcr = slv_reg0[9:0];
-    assign slv_reg1[4:0] = dlr;
-    // assign slv_reg2 = ddr;
+    typedef enum logic [1:0] {IDLE, SETUP, ACCESS, RESPOND} state_t;
+    state_t state, next_state;
 
+    logic [31:0] slv_reg0, slv_reg1, slv_reg2, slv_reg3, slv_reg4, slv_reg5;
+    logic [3:0]  digit_1000, digit_100, digit_10, digit_1;
 
-    logic dht_data_valid;
+    assign dcr = slv_reg0[1:0];
 
-    always_ff @(posedge PCLK, posedge PRESET) begin
+    // FSM
+    always_ff @(posedge PCLK or posedge PRESET) begin
+        if (PRESET)
+            state <= IDLE;
+        else
+            state <= next_state;
+    end
+
+    always_comb begin
+        next_state = state;
+        case (state)
+            IDLE:    next_state = (PSEL && !PENABLE) ? SETUP : IDLE;
+            SETUP:   next_state = (PSEL &&  PENABLE) ? ACCESS : SETUP;
+            ACCESS:  next_state = (PWRITE && !dht_done) ? ACCESS : RESPOND;
+            RESPOND: next_state = (!PSEL && !PENABLE) ? IDLE : RESPOND;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // 레지스터, PREADY, PRDATA
+    always_ff @(posedge PCLK or posedge PRESET) begin
         if (PRESET) begin
-            slv_reg0 <= 0;
-            slv_reg2 <= 0;
-            dht_data_valid <= 1'b0;
+            slv_reg0 <= 32'd0;
+            slv_reg1 <= 32'd0;
+            slv_reg2 <= 32'd0;
+            slv_reg3 <= 32'd0;
+            slv_reg4 <= 32'd0;
+            slv_reg5 <= 32'd0;
+            PRDATA   <= 32'd0;
+            PREADY   <= 1'b0;
         end else begin
-            if (dht_done) begin
-                slv_reg0[10:0]  <= 2'b00;  // start 비트 자동 클리어
-                slv_reg2[15:0] <= ddr;  // 센서 데이터 저장
-                dht_data_valid <= 1'b1;  // 유효 플래그 설정
-                slv_reg3       <= digit_1000;
-                slv_reg4       <= digit_100;
-                slv_reg5       <= digit_10;
-                slv_reg6       <= digit_1;
+
+            if (state == ACCESS && PWRITE && PSEL && PENABLE) begin
+                case (PADDR[4:2])
+                    3'd0: slv_reg0 <= PWDATA;
+                    default: ;
+                endcase
             end
 
-            if (PSEL && PENABLE) begin
-                if (PWRITE) begin
-                    PREADY <= 1'b1;
-                    case (PADDR[4:2])
-                        2'd0: begin
-                            slv_reg0 <= PWDATA;
-                            dht_data_valid <= 1'b0;  // 새 명령 시 이전 결과 무효화
-                        end
-                    endcase
-                end else begin
-                    PREADY <= 1'b0;
-                    PRDATA <= 32'bx;
-                    case (PADDR[4:2])
-                        3'd0: begin
-                            PRDATA <= slv_reg0;
-                            PREADY <= 1'b1;
-                        end
-                        3'd1: begin
-                            PRDATA <= slv_reg1;  // LED 상태
-                            PREADY <= 1'b1;
-                        end
-                        3'd2: begin
-                            if (dht_data_valid) begin
-                                PRDATA <= slv_reg2; // 유효 시에만 데이터 반환
-                                PREADY <= 1'b1;
-                            end
-                        end
-                        3'd3: begin
-                            if (dht_data_valid) begin
-                                PRDATA <= slv_reg3;  // uart data
-                                PREADY <= 1'b1;
-                            end
-                        end
-                        3'd4: begin
-                            if (dht_data_valid) begin
-                                PRDATA <= slv_reg4;  // uart data
-                                PREADY <= 1'b1;
-                            end
-                        end
-                        3'd5: begin
-                            if (dht_data_valid) begin
-                                PRDATA <= slv_reg5;  // uart data
-                                PREADY <= 1'b1;
-                            end
-                        end
-                        3'd6: begin
-                            if (dht_data_valid) begin
-                                PRDATA <= slv_reg6;  // uart data
-                                PREADY <= 1'b1;
-                            end
-                        end
-                    endcase
-                end
-            end else begin
-                PREADY <= 1'b0;
+            if (dht_done) begin 
+                slv_reg0[1:0]  <= 2'b00;                // start clear
+                slv_reg1[15:0] <= ddr;                  // original data
+                slv_reg2[3:0]  <= ddr / 1000 % 10;
+                slv_reg3[3:0]  <= ddr / 100  % 10;
+                slv_reg4[3:0]  <= ddr / 10   % 10;
+                slv_reg5[3:0]  <= ddr        % 10;
             end
+
+            case (state)
+                IDLE: begin
+                    PREADY <= 1'b0;
+                    PRDATA <= 32'd0;
+                end
+                ACCESS: begin
+                    if (!PWRITE) begin
+                        PREADY <= 1'b1;
+                        case (PADDR[4:2])
+                            3'd0: PRDATA <= {30'd0, slv_reg0[1:0]};
+                            3'd1: PRDATA <= {16'd0, slv_reg1};
+                            3'd2: PRDATA <= {28'd0, slv_reg2};
+                            3'd3: PRDATA <= {28'd0, slv_reg3};
+                            3'd4: PRDATA <= {28'd0, slv_reg4};
+                            3'd5: PRDATA <= {28'd0, slv_reg5};
+                            default: PRDATA <= 32'd0;
+                        endcase
+                    end else begin
+                        PREADY <= dht_done;
+                    end
+                end
+                RESPOND: begin
+                    PREADY <= 1'b0;
+                end
+            endcase
         end
     end
 endmodule
